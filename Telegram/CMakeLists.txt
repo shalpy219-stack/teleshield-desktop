@@ -2711,6 +2711,10 @@ PRIVATE
     settings.cpp
     settings.h
     stdafx.h
+    teleshield/teleshield_bridge.cpp
+    teleshield/teleshield_bridge.h
+    teleshield/teleshield_studio.cpp
+    teleshield/teleshield_studio.h
     tray_accounts_menu.h
     tray.cpp
     tray.h

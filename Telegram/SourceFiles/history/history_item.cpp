@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_item.h"
+#include "teleshield/teleshield_bridge.h"
 
 #include "api/api_premium.h"
 #include "api/api_sensitive_content.h"
@@ -4769,6 +4770,19 @@ void HistoryItem::detectTextLinks(
 }
 
 void HistoryItem::setText(TextWithEntities textWithEntities) {
+	// [TeleShield] Inspect once at the central text ingestion point so every
+	// message renderer receives the sanitized value and never raw blocked text.
+	const auto shieldDecision = TeleShield::Bridge::InspectText(
+		textWithEntities.text);
+	if (shieldDecision == 1) {
+		textWithEntities = TextWithEntities{
+			u"محتوى مخفي بواسطة درع تيلي"_q,
+		};
+	} else if (shieldDecision >= 2) {
+		textWithEntities = TextWithEntities{
+			u"تم حظر هذا المحتوى بواسطة درع تيلي"_q,
+		};
+	}
 	detectTextLinks(textWithEntities);
 	setTextValue((_media && _media->consumeMessageText(textWithEntities))
 		? TextWithEntities()

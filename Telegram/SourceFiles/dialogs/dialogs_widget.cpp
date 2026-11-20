@@ -98,6 +98,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/info_memento.h"
 #include "inline_bots/bot_attach_web_view.h"
 #include "styles/style_dialogs.h"
+#include "teleshield/teleshield_bridge.h"
 #include "styles/style_chat.h"
 #include "styles/style_chat_helpers.h"
 #include "styles/style_dialogs_widget.h"
@@ -3078,6 +3079,19 @@ bool Widget::search(bool inCache, SearchRequestDelay delay) {
 		: nullptr;
 	const auto filter = _searchState.filter;
 	const auto fromArchive = _searchState.fromArchive;
+	// [TeleShield] Search lock applies only to global discovery. Searching
+	// inside an already-open conversation remains available.
+	if (!trimmed.isEmpty()
+		&& !inPeer
+		&& TeleShield::Bridge::IsSearchLocked()) {
+		cancelSearchRequest();
+		_peerSearch.clear();
+		peerSearchReceived({});
+		_inner->searchRequested(false);
+		controller()->showToast(
+			u"البحث العام مقفل بواسطة درع تيلي"_q);
+		return true;
+	}
 	const auto fromStartType = SearchRequestType{
 		.start = true,
 		.peer = (inPeer != nullptr),

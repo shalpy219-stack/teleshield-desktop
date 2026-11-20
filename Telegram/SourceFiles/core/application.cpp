@@ -107,6 +107,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/confirm_box.h"
 #include "core/cached_webview_availability.h"
 #include "test/test_agent.h"
+#include "teleshield/teleshield_bridge.h"
+#include "teleshield/teleshield_studio.h"
 
 #include <QtCore/QStandardPaths>
 #include <QtCore/QMimeDatabase>
@@ -264,6 +266,11 @@ void Application::closeAdditionalWindows() {
 }
 
 Application::~Application() {
+	// [TeleShield] Release the on-demand WebView before Qt tears down windows,
+	// then flush and unload the native shield engine.
+	TeleShield::CloseStudioWindow();
+	TeleShield::Bridge::Shutdown();
+
 	if (_savedWindows) {
 		_savedWindows->writeNow();
 	}
@@ -318,6 +325,10 @@ void Application::run() {
 	_notifications = std::make_unique<Window::Notifications::System>();
 
 	startLocalStorage();
+
+	// [TeleShield] The bridge loads the optional DLL from the executable
+	// directory and degrades to pass-through behavior when it is unavailable.
+	(void)TeleShield::Bridge::Init(cWorkingDir() + u"teleshield"_q);
 
 	style::SetCustomFont(settings().customFontFamily());
 	style::internal::StartFonts();

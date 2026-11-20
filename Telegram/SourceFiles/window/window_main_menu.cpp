@@ -77,6 +77,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_wallet.h"
 #include "styles/style_window.h"
 #include "styles/style_window_main_menu.h"
+#include "teleshield/teleshield_bridge.h"
+#include "teleshield/teleshield_studio.h"
 
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
@@ -721,6 +723,24 @@ void MainMenu::setupMenu() {
 		)->setClickedCallback([=] {
 			controller->showPeerHistory(controller->session().user());
 		});
+		// [TeleShield] Studio is created only from this explicit action and is
+		// destroyed as soon as its native panel closes.
+		addAction(
+			rpl::single(u"متجر درع تيلي والاستوديو"_q),
+			{ &st::menuIconShop }
+		)->setClickedCallback([=] {
+			controller->window().hideSettingsAndLayer();
+			TeleShield::OpenStudioWindow(u"/store"_q);
+		});
+		const auto shieldSearchLock = addAction(
+			rpl::single(u"قفل البحث — درع تيلي"_q),
+			{ &st::menuIconLock }
+		)->toggleOn(rpl::single(
+			TeleShield::Bridge::IsSearchLocked()));
+		shieldSearchLock->toggledChanges(
+		) | rpl::on_next([](bool locked) {
+			TeleShield::Bridge::SetSearchLocked(locked);
+		}, shieldSearchLock->lifetime());
 		const auto session = &controller->session();
 		const auto wallet = _menu->add(
 			object_ptr<Ui::SlideWrap<Ui::SettingsButton>>(
