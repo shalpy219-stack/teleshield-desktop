@@ -39,6 +39,13 @@ jobs:
           Remove-Item C:\hostedtoolcache\windows\Go*, C:\hostedtoolcache\windows\Ruby*, C:\hostedtoolcache\windows\PyPy*, C:\hostedtoolcache\windows\Java_*, C:\hostedtoolcache\windows\NuGet* -Recurse -Force -ErrorAction SilentlyContinue
           Write-Host ('{0:N1} GB -> {1:N1} GB free' -f $before, ((Get-PSDrive C).Free / 1GB))
 
+      - name: Configure Pagefile
+        uses: al-cheb/configure-pagefile-action@v1.4
+        with:
+          minimum-size: 16GB
+          maximum-size: 32GB
+          disk-root: "C:"
+
       - name: Prepare directories
         run: |
           mkdir %userprofile%\TBuild\Libraries
@@ -88,21 +95,24 @@ jobs:
           nuget sources Disable -Name "Microsoft Visual Studio Offline Packages"
           nuget sources Add -Source https://api.nuget.org/v3/index.json & exit 0
 
-      - name: ThirdParty cache
-        uses: actions/cache@v6
+      - name: Restore ThirdParty cache
+        uses: actions/cache/restore@v4
+        id: cache-third-party
         with:
           path: ${{ env.TBUILD }}\ThirdParty
           key: ${{ runner.OS }}-${{ runner.arch }}-third-party-${{ env.CACHE_KEY }}
           restore-keys: ${{ runner.OS }}-${{ runner.arch }}-third-party-
 
-      - name: Libraries cache
-        uses: actions/cache@v6
+      - name: Restore Libraries cache
+        uses: actions/cache/restore@v4
+        id: cache-libs
         with:
           path: ${{ env.LibrariesPath }}
           key: ${{ runner.OS }}-x64-libs-${{ env.CACHE_KEY }}
           restore-keys: ${{ runner.OS }}-x64-libs-
 
       - name: Prepare Windows libraries
+        id: prepare-libs
         env:
           SKIP_DUMPSYMS: "1"
         run: |
@@ -112,6 +122,20 @@ jobs:
       - name: Free up disk space
         shell: bash
         run: find $LibrariesPath '(' '(' ! '(' -name '*.lib' -o -name '*.a' -o -name '*.exe' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.cmake' -o -name '*.pc' -o -path '*/include/*' -o -path '*/objects-*' -o -path '*/cache_keys/*' -o -path '*/patches/*' -o -path '*/nv-codec-headers/*' -o -path '*/src/wallet_engine/*' ')' -type f ')' -o -empty ')' -delete
+
+      - name: Save ThirdParty cache
+        uses: actions/cache/save@v4
+        if: always() && steps.prepare-libs.outcome == 'success' && steps.cache-third-party.outputs.cache-hit != 'true'
+        with:
+          path: ${{ env.TBUILD }}\ThirdParty
+          key: ${{ runner.OS }}-${{ runner.arch }}-third-party-${{ env.CACHE_KEY }}
+
+      - name: Save Libraries cache
+        uses: actions/cache/save@v4
+        if: always() && steps.prepare-libs.outcome == 'success' && steps.cache-libs.outputs.cache-hit != 'true'
+        with:
+          path: ${{ env.LibrariesPath }}
+          key: ${{ runner.OS }}-x64-libs-${{ env.CACHE_KEY }}
 
       - name: Stub private packer keys
         shell: bash
@@ -141,7 +165,10 @@ jobs:
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF
 
       - name: Build Telegram Desktop
-        run: cmake --build %TBUILD%\%REPO_NAME%\out --config Release --target Telegram --parallel
+        env:
+          _CL_: "/Zm250"
+          CXXFLAGS: "/MP2 /Zm250"
+        run: cmake --build %TBUILD%\%REPO_NAME%\out --config Release --target Telegram --parallel 2 -- /m:2 /p:CL_MPCount=2
 
       - name: Package TeleShield
         shell: pwsh
