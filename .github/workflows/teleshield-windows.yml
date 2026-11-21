@@ -39,13 +39,6 @@ jobs:
           Remove-Item C:\hostedtoolcache\windows\Go*, C:\hostedtoolcache\windows\Ruby*, C:\hostedtoolcache\windows\PyPy*, C:\hostedtoolcache\windows\Java_*, C:\hostedtoolcache\windows\NuGet* -Recurse -Force -ErrorAction SilentlyContinue
           Write-Host ('{0:N1} GB -> {1:N1} GB free' -f $before, ((Get-PSDrive C).Free / 1GB))
 
-      - name: Configure Pagefile
-        uses: al-cheb/configure-pagefile-action@v1.4
-        with:
-          minimum-size: 16GB
-          maximum-size: 32GB
-          disk-root: "C:"
-
       - name: Prepare directories
         run: |
           mkdir %userprofile%\TBuild\Libraries
@@ -119,16 +112,30 @@ jobs:
           set CARGO_INCREMENTAL=0
           %TBUILD%\%REPO_NAME%\Telegram\build\prepare\win.bat silent
 
-      - name: Free up disk space
+      - name: Check ThirdParty build status
+        if: always() && steps.cache-third-party.outputs.cache-hit != 'true'
+        id: check-third-party
         shell: bash
-        run: find $LibrariesPath '(' '(' ! '(' -name '*.lib' -o -name '*.a' -o -name '*.exe' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.cmake' -o -name '*.pc' -o -path '*/include/*' -o -path '*/objects-*' -o -path '*/cache_keys/*' -o -path '*/patches/*' -o -path '*/nv-codec-headers/*' -o -path '*/src/wallet_engine/*' ')' -type f ')' -o -empty ')' -delete
+        run: |
+          if [ -d "$TBUILD/ThirdParty/rust" ] && [ -d "$TBUILD/ThirdParty/jom" ] && [ -d "$TBUILD/ThirdParty/msys64" ]; then
+            echo "ThirdParty is fully prepared."
+            echo "should_save=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ThirdParty is incomplete."
+            echo "should_save=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Save ThirdParty cache
         uses: actions/cache/save@v4
-        if: always() && steps.prepare-libs.outcome == 'success' && steps.cache-third-party.outputs.cache-hit != 'true'
+        if: always() && steps.check-third-party.outputs.should_save == 'true'
         with:
           path: ${{ env.TBUILD }}\ThirdParty
           key: ${{ runner.OS }}-${{ runner.arch }}-third-party-${{ env.CACHE_KEY }}
+
+      - name: Free up disk space
+        if: steps.prepare-libs.outcome == 'success'
+        shell: bash
+        run: find $LibrariesPath '(' '(' ! '(' -name '*.lib' -o -name '*.a' -o -name '*.exe' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.cmake' -o -name '*.pc' -o -path '*/include/*' -o -path '*/objects-*' -o -path '*/cache_keys/*' -o -path '*/patches/*' -o -path '*/nv-codec-headers/*' -o -path '*/src/wallet_engine/*' ')' -type f ')' -o -empty ')' -delete
 
       - name: Save Libraries cache
         uses: actions/cache/save@v4
@@ -163,6 +170,18 @@ jobs:
           -D DESKTOP_APP_ENABLE_LTO=OFF ^
           -D DESKTOP_APP_DISABLE_AUTOUPDATE=OFF ^
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF
+
+      - name: Check disk space before Pagefile
+        shell: pwsh
+        run: |
+          Get-PSDrive C, D -ErrorAction SilentlyContinue | Select-Object Name, @{Name="Used(GB)";Expression={[math]::round($_.Used/1GB, 2)}}, @{Name="Free(GB)";Expression={[math]::round($_.Free/1GB, 2)}} | Format-Table -AutoSize
+
+      - name: Configure Pagefile
+        uses: al-cheb/configure-pagefile-action@v1.4
+        with:
+          minimum-size: 8GB
+          maximum-size: 16GB
+          disk-root: "C:"
 
       - name: Build Telegram Desktop
         env:
